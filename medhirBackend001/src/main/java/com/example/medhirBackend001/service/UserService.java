@@ -1,66 +1,62 @@
 package com.example.medhirBackend001.service;
 
 import com.example.medhirBackend001.dto.AuthRequest;
+import com.example.medhirBackend001.dto.RegisterRequest;
+import com.example.medhirBackend001.exception.DuplicateResourceException;
 import com.example.medhirBackend001.model.User;
 import com.example.medhirBackend001.repository.UserRepository;
+import com.example.medhirBackend001.security.JwtUtil;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class UserService {
 
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final JwtUtil jwtUtil;
     private final AuthenticationManager authenticationManager;
-    private final JwtService jwtService;
-    private final UserDetailsService userDetailsService;
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder, AuthenticationManager authenticationManager, JwtService jwtService, UserDetailsService userDetailsService) {
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.authenticationManager = authenticationManager;
-        this.jwtService = jwtService;
-        this.userDetailsService = userDetailsService;
-    }
-
-    public User registerUser(User user) {
-        if (userRepository.findByEmail(user.getEmail()).isPresent()) {
-            throw new RuntimeException("Email already exists");
+    public String registerUser(RegisterRequest request) {
+        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+            throw new DuplicateResourceException("User with this email already exists.");
         }
-        if (user.getRole() == null) {
-            user.setRole("USER"); // Assign default role if none is provided
-        }
-        user.setPassword(passwordEncoder.encode(user.getPassword())); // Encrypt password
-        return userRepository.save(user);
+
+        User user = User.builder()
+                .email(request.getEmail())
+                .password(passwordEncoder.encode(request.getPassword()))
+                .roles((List<String>) request.getRoles())
+                .build();
+
+        userRepository.save(user);
+        return "User registered successfully!";
     }
 
-    public Optional<User> getUserByEmail(String email) {
-        return userRepository.findByEmail(email);
+    public Map<String,Object> login(AuthRequest request) {
+        authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+        );
+
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(()-> new RuntimeException("Invalid Credentials"));
+        // Convert Set<String> to List<String>
+        List<String> rolesList = user.getRoles().stream().collect(Collectors.toList());
+        String token = jwtUtil.generateToken(user.getEmail(), user.getRoles());
+
+        Map<String,Object> response = new HashMap<>();
+        response.put("message","Login successful!");
+        response.put("token",token);
+        return response;
+
     }
-
-    // User Login
-    public String loginUser(AuthRequest authRequest) {
-        try {
-            // Attempt authentication
-            authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(authRequest.getEmail(), authRequest.getPassword())
-            );
-
-            // Fetch user details
-            UserDetails userDetails = userDetailsService.loadUserByUsername(authRequest.getEmail());
-
-            // Generate JWT token
-            return jwtService.generateToken(userDetails);
-
-        } catch (Exception e) {
-            throw new RuntimeException("Invalid email or password"); // Send custom error message
-        }
-    }
-
 }

@@ -1,27 +1,32 @@
 package com.example.medhirBackend001.model;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
+import lombok.*;
 
-import java.sql.ConnectionBuilder;
+import java.util.List;
+import java.util.Set;
 
 @Document(collection = "users")
 @Getter
 @Setter
-@AllArgsConstructor
 @NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class User {
     @Id
     private String id;
-    private String email;
-    private String password;
-    private String role; // Example: "SUPERADMIN"
 
-    public static ConnectionBuilder withUsername(String email) {
-        return null;
-    }
+    @Indexed(unique = true)
+    @NotBlank(message = "Email is required")
+    @Email(message = "Invalid email format")
+    private String email;
+
+    @NotBlank(message = "Password is required")
+    private String password;
+
+    private List<String> roles;
 }
